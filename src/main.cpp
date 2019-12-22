@@ -1,93 +1,149 @@
 #include <Arduino.h>
-#include <FastLED.h>
-#include <avr/interrupt.h>
-#include <avr/power.h>
-#include <avr/sleep.h>
-#include "pins.h"
 
-static const int maxBrightness = 200;
-static const int peeDelay = 10000;  // 1000 * 60 * 10;
-static const int lightTrigger = 400;
+// Rainbow color changing RGB leds example
+// I am using common cathode RGB leds
+#define PIN_RED1 3
+#define PIN_GREEN1 5
+#define PIN_BLUE1 6
+#define PIN_RED2 9
+#define PIN_GREEN2 10
+#define PIN_BLUE2 11
+#define IR_PIN 2
 
-static volatile bool lightUp = false;
-static const int LED_COUNT = 29;
-static CRGB leds[LED_COUNT];
-static CRGB kelvinTable[] = {CRGB(0xff3800), CRGB(0xff4700), CRGB(0xff5300)};
+int counter = 0;
 
-void setColour() {
-  for (int i = 0; i < LED_COUNT; i++) leds[i] = kelvinTable[1];
+// Number of colors used for animating, higher = smoother and slower animation)
+int numColors = 255;
+
+void setColor(unsigned char red, unsigned char green, unsigned char blue) {
+  analogWrite(PIN_RED1, red);
+  analogWrite(PIN_GREEN1, green);
+  analogWrite(PIN_BLUE1, blue);
+
+  analogWrite(PIN_RED2, green);
+  analogWrite(PIN_GREEN2, blue);
+  analogWrite(PIN_BLUE2, red);
 }
 
-ISR(PCINT0_vect) { lightUp = true; }
+long HSBtoRGB(float _hue, float _sat, float _brightness) {
+  float red = 0.0;
+  float green = 0.0;
+  float blue = 0.0;
+
+  if (_sat == 0.0) {
+    red = _brightness;
+    green = _brightness;
+    blue = _brightness;
+  } else {
+    if (_hue == 360.0) {
+      _hue = 0;
+    }
+
+    int slice = _hue / 60.0;
+    float hue_frac = (_hue / 60.0) - slice;
+
+    float aa = _brightness * (1.0 - _sat);
+    float bb = _brightness * (1.0 - _sat * hue_frac);
+    float cc = _brightness * (1.0 - _sat * (1.0 - hue_frac));
+
+    switch (slice) {
+      case 0:
+        red = _brightness;
+        green = cc;
+        blue = aa;
+        break;
+      case 1:
+        red = bb;
+        green = _brightness;
+        blue = aa;
+        break;
+      case 2:
+        red = aa;
+        green = _brightness;
+        blue = cc;
+        break;
+      case 3:
+        red = aa;
+        green = bb;
+        blue = _brightness;
+        break;
+      case 4:
+        red = cc;
+        green = aa;
+        blue = _brightness;
+        break;
+      case 5:
+        red = _brightness;
+        green = aa;
+        blue = bb;
+        break;
+      default:
+        red = 0.0;
+        green = 0.0;
+        blue = 0.0;
+        break;
+    }
+  }
+
+  long ired = red * 255.0;
+  long igreen = green * 255.0;
+  long iblue = blue * 255.0;
+
+  return long((ired << 16) | (igreen << 8) | (iblue));
+}
+
+// The combination of numColors and animationDelay determines the
+// animation speed, I recommend a higher number of colors if you want
+// to slow down the animation. Higher number of colors = smoother color
+// changing.
+int animationDelay =
+    1;  // number milliseconds before RGB LED changes to next color
 
 void setup() {
-  clock_prescale_set(clock_div_1);
-  pinMode(PIR_SENSOR_PIN, INPUT);
-  pinMode(LED_STIP_POWER_PIN, OUTPUT);
-  GIMSK = _BV(PCIE);
-  PCMSK = _BV(PIR_SENSOR_PIN);
-  MCUCR |= (1 << ISC01) | (1 << ISC00);
-  ADCSRA |= (1 << ADEN);
-  sei();
-  pinMode(3, OUTPUT);
-  FastLED.addLeds<NEOPIXEL, LED_STRIP_PIN>(leds, LED_COUNT);
-  setColour();
-  FastLED.setBrightness(0);
-  FastLED.show();
-}
-
-void sleep() {
-  GIMSK = _BV(PCIE);
-  PCMSK = _BV(PIR_SENSOR_PIN);
-  ADCSRA &= ~_BV(ADEN);
-  MCUCR |= _BV(ISC01) | _BV(ISC00);  // Added?
-  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-
-  sleep_enable();
-  sei();
-  sleep_cpu();
-
-  cli();
-  PCMSK &= ~_BV(PIR_SENSOR_PIN);
-  sleep_disable();
-  ADCSRA |= _BV(ADEN);
-
-  sei();
+  pinMode(PIN_RED1, OUTPUT);
+  pinMode(PIN_BLUE1, OUTPUT);
+  pinMode(PIN_GREEN1, OUTPUT);
+  pinMode(PIN_RED2, OUTPUT);
+  pinMode(PIN_BLUE2, OUTPUT);
+  pinMode(PIN_GREEN2, OUTPUT);
+  pinMode(IR_PIN, INPUT);
 }
 
 void loop() {
-  digitalWrite(LED_STRIP_PIN, 1);
-  digitalWrite(LED_STIP_POWER_PIN, 0);
-  sleep();
-  digitalWrite(LED_STRIP_PIN, 0);
-  delay(100);
-  const auto light = analogRead(A1);
-  // FastLED.setBrightness(100);
-  // for (int i = 0; i < LED_COUNT; i++)
-  //   if (i * 37 < light)
-  //     leds[i] = kelvinTable[1];
-  //   else
-  //     leds[i] = CRGB(0);
-  // FastLED.show();
-  // return;
-  if (lightUp) {
-    if (light < lightTrigger) {
-      digitalWrite(LED_STIP_POWER_PIN, 1);
-      delay(10);
-      setColour();
-      for (int i = 0; i < maxBrightness; i += 4) {
-        FastLED.setBrightness(i);
-        FastLED.show();
-        delay(80);
-      }
-      delay(peeDelay);
-      for (int i = maxBrightness; i >= 0; i--) {
-        FastLED.setBrightness(i);
-        FastLED.show();
-        delay(200);
-      }
-    }
-    lightUp = false;
-    digitalWrite(LED_STIP_POWER_PIN, 0);
-  }
+  if (digitalRead(IR_PIN) == LOW) {
+    setColor(0, 0, 0);
+    return;
+  };
+
+  // This part takes care of displaying the
+  // color changing in reverse by counting backwards if counter
+  // is above the number of available colors
+  float colorNumber = counter > numColors ? counter - numColors : counter;
+
+  // Play with the saturation and brightness values
+  // to see what they do
+  float saturation = 1;    // Between 0 and 1 (0 = gray, 1 = full color)
+  float brightness = .05;  // Between 0 and 1 (0 = dark, 1 is full brightness)
+  float hue =
+      (colorNumber / float(numColors)) * 360;  // Number between 0 and 360
+  long color = HSBtoRGB(hue, saturation, brightness);
+
+  // Get the red, blue and green parts from generated color
+  int red = color >> 16 & 255;
+  int green = color >> 8 & 255;
+  int blue = color & 255;
+
+  setColor(red, green, blue);
+
+  // Counter can never be greater then 2 times the number of available colors
+  // the colorNumber = line above takes care of counting backwards (nicely
+  // looping animation) when counter is larger then the number of available
+  // colors
+  counter = (counter + 1) % (numColors * 2);
+
+  // If you uncomment this line the color changing starts from the
+  // beginning when it reaches the end (animation only plays forward)
+  // counter = (counter + 1) % (numColors);
+
+  delay(animationDelay);
 }
