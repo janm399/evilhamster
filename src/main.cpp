@@ -8,7 +8,7 @@
 #define PIN_RED2 9
 #define PIN_GREEN2 10
 #define PIN_BLUE2 11
-#define IR_PIN 2
+#define IR_PIN A0
 
 int counter = 0;
 
@@ -100,17 +100,21 @@ int animationDelay =
     1;  // number milliseconds before RGB LED changes to next color
 
 void setup() {
+  // Serial.begin(115200);
   pinMode(PIN_RED1, OUTPUT);
   pinMode(PIN_BLUE1, OUTPUT);
   pinMode(PIN_GREEN1, OUTPUT);
   pinMode(PIN_RED2, OUTPUT);
   pinMode(PIN_BLUE2, OUTPUT);
   pinMode(PIN_GREEN2, OUTPUT);
-  pinMode(IR_PIN, INPUT);
+  pinMode(IR_PIN, INPUT_PULLUP);
 }
 
 void loop() {
-  if (digitalRead(IR_PIN) == LOW) {
+  const auto x = analogRead(IR_PIN);
+  // Serial.println(x);
+  // delay(100);
+  if (x > 60) {
     setColor(0, 0, 0);
     return;
   };
