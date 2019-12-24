@@ -113,7 +113,6 @@ void setup() {
 void loop() {
   const auto x = analogRead(IR_PIN);
   // Serial.println(x);
-  // delay(100);
   if (x > 60) {
     setColor(0, 0, 0);
     return;
